@@ -3,9 +3,16 @@ import json
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 import yt_dlp
+from flask import Flask
 
-# Pobieramy token i listę kanałów ze zmiennych środowiskowych lub domyślnych ustawień
-BOT_TOKEN = os.environ.get('BOT_TOKEN', 'TUTAJ_WSTAW_SWOJ_TOKEN_Z_BOTFATHER')
+# Prosty serwer dla Rendera, żeby darmowy plan nie uśpił bota
+app_flask = Flask(__name__)
+
+@app_flask.route('/')
+def home():
+    return "Bot działa!"
+
+BOT_TOKEN = os.environ.get('BOT_TOKEN')
 
 KANALY_YT = [
     'https://www.youtube.com/@giga.shoty67/shorts',
@@ -31,13 +38,7 @@ async def check_and_send_shorts(update: Update, context: ContextTypes.DEFAULT_TY
     await update.message.reply_text("🔎 Sprawdzam nowe Shortsy na wybranych kanałach...")
     
     last_seen = load_last_seen()
-    
-    ydl_opts = {
-        'extract_flat': True,
-        'playlistend': 5,
-        'quiet': True
-    }
-
+    ydl_opts = {'extract_flat': True, 'playlistend': 5, 'quiet': True}
     nowe_filmy_znalezione = False
 
     for kanal_url in KANALY_YT:
@@ -93,14 +94,27 @@ async def check_and_send_shorts(update: Update, context: ContextTypes.DEFAULT_TY
     else:
         await update.message.reply_text("✅ Wszystkie nowe Shortsy zostały wysłane!")
 
+async def main():
+    application = ApplicationBuilder().token(BOT_TOKEN).build()
+    application.add_handler(CommandHandler("start", check_and_send_shorts))
+    application.add_handler(CommandHandler("sprawdz", check_and_send_shorts))
+    
+    # Uruchomienie bota w tle
+    await application.initialize()
+    await application.start()
+    await application.updater.start_polling()
+
 if __name__ == '__main__':
-    # Pobieramy port od Render (wymóg techniczny hostingu)
-    PORT = int(os.environ.get('PORT', '8080'))
-    
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
-    
-    app.add_handler(CommandHandler("start", check_and_send_shorts))
-    app.add_handler(CommandHandler("sprawdz", check_and_send_shorts))
-    
-    print("Bot uruchomiony w chmurze!")
-    app.run_polling()
+    import asyncio
+    import threading
+
+    # Odpalamy serwer Flask w osobnym wątku
+    def run_flask():
+        port = int(os.environ.get('PORT', 10000))
+        app_flask.run(host='0.0.0.0', port=port)
+
+    t = threading.Thread(target=run_flask)
+    t.start()
+
+    # Odpalamy bota Telegrama
+    asyncio.run(main())
