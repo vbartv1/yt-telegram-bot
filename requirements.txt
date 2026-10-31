@@ -2,4 +2,3 @@ python-telegram-bot
 yt-dlp
 ffmpeg-python
 flask
-s
