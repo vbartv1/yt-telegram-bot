@@ -41,7 +41,6 @@ async def check_and_send_shorts(update: Update, context: ContextTypes.DEFAULT_TY
     
     last_seen = load_last_seen()
     
-    # Bezpieczne opcje dla yt-dlp unikające błędów wyciągania playera
     ydl_opts = {
         'extract_flat': 'in_playlist',
         'playlistend': 5,
