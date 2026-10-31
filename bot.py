@@ -1,19 +1,10 @@
 import os
 import json
-from flask import Flask, request
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 import yt_dlp
-import asyncio
-
-app = Flask(__name__)
 
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
-PORT = int(os.environ.get('PORT', 10000))
-
-# Pobieramy automatycznie główny adres z Rendera
-RENDER_EXTERNAL_URL = os.environ.get('RENDER_EXTERNAL_URL')
-
 KANALY_YT = [
     'https://www.youtube.com/@giga.shoty67/shorts',
     'https://www.youtube.com/@tfardyyy/shorts',
@@ -33,9 +24,6 @@ def load_last_seen():
 def save_last_seen(data):
     with open(LAST_SEEN_FILE, 'w') as f:
         json.dump(data, f)
-
-# Inicjalizacja bota Telegrama
-application = Application.builder().token(BOT_TOKEN).build()
 
 async def check_and_send_shorts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🔎 Sprawdzam nowe Shortsy na wybranych kanałach...")
@@ -93,31 +81,15 @@ async def check_and_send_shorts(update: Update, context: ContextTypes.DEFAULT_TY
     save_last_seen(last_seen)
     
     if not nowe_filmy_znalezione:
-        await update.message.reply_text("✨ Brak nových Shortsów od ostatniego sprawdzania!")
+        await update.message.reply_text("✨ Brak nowych Shortsów od ostatniego sprawdzania!")
     else:
         await update.message.reply_text("✅ Wszystkie nowe Shortsy zostały wysłane!")
 
-application.add_handler(CommandHandler("start", check_and_send_shorts))
-application.add_handler(CommandHandler("sprawdz", check_and_send_shorts))
-
-@app.route(f"/{BOT_TOKEN}", methods=["POST"])
-def webhook():
-    """Odbiera powiadomienia od Telegrama"""
-    update = Update.de_json(request.get_json(force=True), application.bot)
-    asyncio.run(application.process_update(update))
-    return "OK", 200
-
-@app.route("/")
-def index():
-    return "Bot Telegrama działa poprawnie przez Webhook!"
-
-if __name__ == "__main__":
-    # Automatyczne ustawienie webhooka w Telegramie przy starcie
-    async def setup_webhook():
-        await application.initialize()
-        webhook_url = f"{RENDER_EXTERNAL_URL}/{BOT_TOKEN}"
-        await application.bot.set_webhook(url=webhook_url)
-        print(f"Webhook ustawiony na: {webhook_url}")
-
-    asyncio.run(setup_webhook())
-    app.run(host="0.0.0.0", port=PORT)
+if __name__ == '__main__':
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    
+    app.add_handler(CommandHandler("start", check_and_send_shorts))
+    app.add_handler(CommandHandler("sprawdz", check_and_send_shorts))
+    
+    print("Bot ruszył w tle i nasłuchuje!")
+    app.run_polling()
