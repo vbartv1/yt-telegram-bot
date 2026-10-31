@@ -7,7 +7,6 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 import yt_dlp
 import threading
 
-# Prosty serwer WWW dla Rendera, żeby darmowy plan działał
 app_flask = Flask(__name__)
 
 @app_flask.route('/')
@@ -41,37 +40,55 @@ async def check_and_send_shorts(update: Update, context: ContextTypes.DEFAULT_TY
     await update.message.reply_text("🔎 Sprawdzam nowe Shortsy na wybranych kanałach...")
     
     last_seen = load_last_seen()
-    ydl_opts = {'extract_flat': True, 'playlistend': 5, 'quiet': True}
+    
+    # Bezpieczne opcje dla yt-dlp unikające błędów wyciągania playera
+    ydl_opts = {
+        'extract_flat': 'in_playlist',
+        'playlistend': 5,
+        'quiet': True,
+        'no_warnings': True,
+        'extractor_args': {'youtube': {'player_client': ['android', 'web']}}
+    }
+    
     nowe_filmy_znalezione = False
 
     for kanal_url in KANALY_YT:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             try:
                 info = ydl.extract_info(kanal_url, download=False)
-                if 'entries' not in info:
+                if not info or 'entries' not in info:
                     continue
                 
-                entries = info['entries']
+                entries = [e for e in info['entries'] if e]
+                if not entries:
+                    continue
+                    
                 ostatni_zapisany_id = last_seen.get(kanal_url)
                 
                 nowe_entries = []
                 for entry in entries:
-                    if entry['id'] == ostatni_zapisany_id:
+                    if entry.get('id') == ostatni_zapisany_id:
                         break
                     nowe_entries.append(entry)
                 
                 if entries:
-                    last_seen[kanal_url] = entries[0]['id']
+                    last_seen[kanal_url] = entries[0].get('id')
 
                 for entry in reversed(nowe_entries):
-                    video_url = f"https://www.youtube.com/watch?v={entry['id']}"
-                    await update.message.reply_text(f"⬇️ Pobieram nowy Short: {entry.get('title', 'Short')}")
+                    vid_id = entry.get('id')
+                    vid_title = entry.get('title', 'Short')
+                    if not vid_id:
+                        continue
+                        
+                    video_url = f"https://www.youtube.com/watch?v={vid_id}"
+                    await update.message.reply_text(f"⬇️ Pobieram nowy Short: {vid_title}")
                     
                     download_opts = {
-                        'format': 'mp4[height<=1080]',
+                        'format': 'bestvideo[height<=1080]+bestaudio/best[height<=1080]/best',
                         'outtmpl': 'temp_short.mp4',
                         'overwrites': True,
                         'quiet': True,
+                        'extractor_args': {'youtube': {'player_client': ['android', 'web']}}
                     }
                     
                     with yt_dlp.YoutubeDL(download_opts) as ydl_down:
@@ -82,13 +99,13 @@ async def check_and_send_shorts(update: Update, context: ContextTypes.DEFAULT_TY
                             await context.bot.send_video(
                                 chat_id=update.effective_chat.id,
                                 video=video_file,
-                                caption=f"🎬 **{entry.get('title')}**\n🔗 {video_url}"
+                                caption=f"🎬 **{vid_title}**\n🔗 {video_url}"
                             )
                         os.remove('temp_short.mp4')
                         nowe_filmy_znalezione = True
 
             except Exception as e:
-                await update.message.reply_text(f"Błąd przy sprawdzaniu kanału: {str(e)}")
+                await update.message.reply_text(f"⚠️ Błąd przy kanale: {str(e)}")
 
     save_last_seen(last_seen)
     
@@ -107,7 +124,6 @@ async def main():
     await application.start()
     await application.updater.start_polling()
     
-    # Utrzymujemy działanie pętli
     while True:
         await asyncio.sleep(3600)
 
@@ -117,9 +133,6 @@ def run_bot():
     loop.run_until_complete(main())
 
 if __name__ == '__main__':
-    # Odpalamy bota w osobnym wątku, żeby nie gryzł się z serwerem WWW
     t = threading.Thread(target=run_bot)
     t.start()
-    
-    # Uruchamiamy serwer Flask na porcie wymaganym przez Render
     app_flask.run(host='0.0.0.0', port=PORT)
