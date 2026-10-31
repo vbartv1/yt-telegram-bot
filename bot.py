@@ -1,10 +1,22 @@
 import os
 import json
+import asyncio
+from flask import Flask
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 import yt_dlp
+import threading
+
+# Prosty serwer WWW dla Rendera, żeby darmowy plan działał
+app_flask = Flask(__name__)
+
+@app_flask.route('/')
+def home():
+    return "Bot działa poprawnie!"
 
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
+PORT = int(os.environ.get('PORT', 10000))
+
 KANALY_YT = [
     'https://www.youtube.com/@giga.shoty67/shorts',
     'https://www.youtube.com/@tfardyyy/shorts',
@@ -85,11 +97,29 @@ async def check_and_send_shorts(update: Update, context: ContextTypes.DEFAULT_TY
     else:
         await update.message.reply_text("✅ Wszystkie nowe Shortsy zostały wysłane!")
 
+async def main():
+    application = ApplicationBuilder().token(BOT_TOKEN).build()
+    application.add_handler(CommandHandler("start", check_and_send_shorts))
+    application.add_handler(CommandHandler("sprawdz", check_and_send_shorts))
+    
+    print("Bot ruszył i nasłuchuje w tle!")
+    await application.initialize()
+    await application.start()
+    await application.updater.start_polling()
+    
+    # Utrzymujemy działanie pętli
+    while True:
+        await asyncio.sleep(3600)
+
+def run_bot():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(main())
+
 if __name__ == '__main__':
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    # Odpalamy bota w osobnym wątku, żeby nie gryzł się z serwerem WWW
+    t = threading.Thread(target=run_bot)
+    t.start()
     
-    app.add_handler(CommandHandler("start", check_and_send_shorts))
-    app.add_handler(CommandHandler("sprawdz", check_and_send_shorts))
-    
-    print("Bot ruszył w tle i nasłuchuje!")
-    app.run_polling()
+    # Uruchamiamy serwer Flask na porcie wymaganym przez Render
+    app_flask.run(host='0.0.0.0', port=PORT)
